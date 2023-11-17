@@ -16,22 +16,30 @@ tl_fit <- lm(tl_formula, data = df_merged)
 summary(tl_fit)
 
 # diagnostics plots 
-# 1) heavy upper tail QQ-plot 
-# 2) heteroskedastic precipitation v. resids plot
+# 1) heavy upper tail QQ-plot - log transform on Yi
+# 2) heteroskedastic precipitation v. residuals - separate 0 and non-0 subsets
 par(mfrow = c(2,2))
 plot(tl_fit)
 plot(df_merged) # only issue is QQ-plot
 
 # predictors v. residuals
-names(df_merged)
+plot_pvr <- function(df, model) {
+  model_resid <- paste(model,'$residuals', sep = '')
+  cts_pred <- c('island_name', 'pop_size_meancentered', 'temperature', 'precipitation', 'atm_pressure', 'NAO')
+  for (pred in cts_pred){
+    predictors <- paste(df, '$', )
+    plot(df_merged$pop_size_meancentered,get(model_resid)) # fix for loop stuff
+  }
+  plot(as.factor(paste(model, '$island_name', sep = ''), get(model_resid)))
+}
 par(mfrow = c(3,2))
+
 plot(as.factor(df_merged$island_name), tl_fit$residuals)
 plot(df_merged$pop_size_meancentered,tl_fit$residuals)
 plot(df_merged$temperature,tl_fit$residuals)
 plot(df_merged$precipitation,tl_fit$residuals) # heteroskedastic
 plot(df_merged$atm_pressure,tl_fit$residuals)
 plot(df_merged$NAO,tl_fit$residuals)
-dev.off()
 
 # log of the tl
 df_merged <- df_merged %>% mutate(logTL = log(TL))
@@ -43,9 +51,70 @@ summary(logTL_fit)
 par(mfrow = c(2,2))
 plot(logTL_fit) # fixed QQ plot :)
 
+
+# heteroskedasticity: look at nonzero precip subset
+noprecip_subset <- df_merged[df_merged$precipitation==0,]
+precip_subset <- df_merged[df_merged$precipitation!=0,]
+
+noprecip_logTL_fit <- lm(logTL_formula, data = noprecip_subset)
+precip_logTL_fit <- lm(logTL_formula, data = precip_subset)
+
+summary(noprecip_logTL_fit)
+summary(precip_logTL_fit)
+
+par(mfrow = c(3,2))
+plot(as.factor(precip_subset$island_name), precip_logTL_fit$residuals)
+plot(precip_subset$pop_size_meancentered, precip_logTL_fit$residuals)
+plot(precip_subset$temperature,precip_logTL_fit$residuals)
+plot(precip_subset$precipitation,precip_logTL_fit$residuals) 
+plot(precip_subset$atm_pressure,precip_logTL_fit$residuals)
+plot(precip_subset$NAO,precip_logTL_fit$residuals)
+dev.off
+
+
+
+# heteroskedasticity: attempt 2 - inverse weighting on Yi
+wt <- 1 / lm(abs(logTL_fit$residuals) ~ logTL_fit$fitted.values)$fitted.values^2
+wls_fit <- lm(logTL_formula, data = df_merged, weights=wt)
+summary(wls_fit)
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 # investigate QQ outliers 685, 2020, 1911
-df_merged[1911,]
-df_merged[1911,]
+df_merged[c(685,2020,1911),]
+head(sort(df_merged$TL,decreasing = T))
+head(sort(df_merged$TL,decreasing = F))
+# 685: shortest TL .14; ID 234
+# 2020: 2nd shortest TL .19; ID 230
+# 1911: 2nd longest TL 3.76; ID 1891
+
+# looking at the longest TL
+df_merged[df_merged$TL == '3.78',]
+logTL_fit$residuals[1818] # also had large residuals
+logTL_fit$residuals[c(685,2020,1911)]
+head(sort(logTL_fit$residuals, decreasing = T))
+head(sort(logTL_fit$residuals, decreasing = F))
+
+# check for other missing variables among these possible outliers
+'''use id'''
+
+
 
 
 
@@ -54,9 +123,9 @@ par(mfrow = c(3,2))
 plot(as.factor(df_merged$island_name), logTL_fit$residuals)
 plot(df_merged$pop_size_meancentered,logTL_fit$residuals)
 plot(df_merged$temperature,logTL_fit$residuals)
-plot(df_merged$precipitation,logTL_fit$residuals) # heteroskedastic
+plot(df_merged$precipitation,logTL_fit$residuals) # still slightly heteroskedastic
 plot(df_merged$atm_pressure,logTL_fit$residuals)
 plot(df_merged$NAO,logTL_fit$residuals)
 
 # Model selection: vif and lasso
-
+'''do this next'''
