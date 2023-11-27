@@ -16,7 +16,7 @@ tl_fit <- lm(tl_formula, data = df_merged)
 summary(tl_fit)
 
 # diagnostics plots 
-# 1) heavy upper tail QQ-plot - log transform on Yi
+# 1) heavy upper tail QQ-plot - transforms on Yi
 # 2) heteroskedastic precipitation v. residuals - separate 0 and non-0 subsets
 par(mfrow = c(2,2))
 plot(tl_fit)
@@ -24,32 +24,32 @@ plot(df_merged) # only issue is QQ-plot
 
 # predictors v. residuals
 plot_pvr <- function(df, model) {
-  model_resid <- paste(model,'$residuals', sep = '')
-  cts_pred <- c('island_name', 'pop_size_meancentered', 'temperature', 'precipitation', 'atm_pressure', 'NAO')
+  model_resid <- get(model)$residuals
+  cts_pred <- c('pop_size_meancentered', 'temperature', 'precipitation', 'atm_pressure', 'NAO')
+  
+  par(mfrow = c(3,2))
   for (pred in cts_pred){
-    predictors <- paste(df, '$', )
-    plot(df_merged$pop_size_meancentered,get(model_resid)) # fix for loop stuff
+    predictor <- get(df)[[pred]]
+    plot(predictor, model_resid, xlab = pred)
   }
-  plot(as.factor(paste(model, '$island_name', sep = ''), get(model_resid)))
+  plot(as.factor(get(df)$island_name), model_resid)
 }
-par(mfrow = c(3,2))
 
-plot(as.factor(df_merged$island_name), tl_fit$residuals)
-plot(df_merged$pop_size_meancentered,tl_fit$residuals)
-plot(df_merged$temperature,tl_fit$residuals)
-plot(df_merged$precipitation,tl_fit$residuals) # heteroskedastic
-plot(df_merged$atm_pressure,tl_fit$residuals)
-plot(df_merged$NAO,tl_fit$residuals)
+plot_pvr('df_merged', 'tl_fit')
 
-# log of the tl
-df_merged <- df_merged %>% mutate(logTL = log(TL))
+# log and cox transform of the tl                  ???????????????????? need to try this
+df_merged <- df_merged %>% mutate(logTL = log(TL), rootTL = TL^(1/3))
 logTL_formula <- logTL ~ island_name +
   pop_size_meancentered + temperature +
   precipitation + atm_pressure + NAO
+rootTL_formula <- logTL^(1/3) ~ island_name +
+  pop_size_meancentered + temperature +
+  precipitation + atm_pressure + NAO
 logTL_fit <- lm(logTL_formula, data = df_merged)
-summary(logTL_fit)
+rootTL_fit <- lm(rootTL_formula, data = df_merged)
 par(mfrow = c(2,2))
 plot(logTL_fit) # fixed QQ plot :)
+plot(rootTL_fit)
 
 
 # heteroskedasticity: look at nonzero precip subset
