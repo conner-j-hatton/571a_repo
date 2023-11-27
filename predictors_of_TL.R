@@ -1,131 +1,169 @@
+############################################################################################################
+# Libraries
 library(dplyr)
+library(MASS)
 
-df_sp <- read.csv("./data_clean/sparrow_data_Pepke_etal_EcolEvol2022clean.csv") %>%
-    select(c("ID", "TL", "island_name", "pop_size_meancentered", "hatch_date"))
-
-df_wt <- read.csv("./data_clean/weather_data_Pepke_etal_EcolEvol2022clean.csv") %>%
-    select("date","temperature":"NAO")
-
-# merge by hatch_date/date
-df_merged <- df_sp %>% merge(df_wt, by.x = "hatch_date", by.y = "date")
-
-tl_formula <- TL ~ island_name +
-                   pop_size_meancentered + temperature +
-                   precipitation + atm_pressure + NAO
-tl_fit <- lm(tl_formula, data = df_merged)
-summary(tl_fit)
-
-# diagnostics plots 
-# 1) heavy upper tail QQ-plot - transforms on Yi
-# 2) heteroskedastic precipitation v. residuals - separate 0 and non-0 subsets
-par(mfrow = c(2,2))
-plot(tl_fit)
-plot(df_merged) # only issue is QQ-plot
-
-# predictors v. residuals
-plot_pvr <- function(df, model) {
-  model_resid <- get(model)$residuals
-  cts_pred <- c('pop_size_meancentered', 'temperature', 'precipitation', 'atm_pressure', 'NAO')
-  
-  par(mfrow = c(3,2))
-  for (pred in cts_pred){
-    predictor <- get(df)[[pred]]
-    plot(predictor, model_resid, xlab = pred)
+# Functions
+plot_pvr <- function(model, df, pvr_pred) {     # plotting predictors v. residuals
+  resid <- model$residuals
+    for (pred in pvr_pred){
+      predictor <- df[[pred]]
+      plot(predictor, resid, xlab = pred)
   }
-  plot(as.factor(get(df)$island_name), model_resid)
 }
 
-plot_pvr('df_merged', 'tl_fit')
+getDFFITS <- function(model, data){
+  n <- nrow(data)
+  p <- length(model$coefficients)
+  SSE <- sum(model$residuals^2)
+  X <- model.matrix(model)
+  H <- X %*% solve(t(X) %*% X) %*% t(X)
+  
+  e <- rep(0,n)
+  t <- rep(0,n)
+  DFFITS <- rep(0,n)
+  
+  for (i in 1:n) {
+    e[i] <- model$residuals[i]
+    t[i] <- e[i] * ( (n-p-1) / ( SSE*(1-H[i,i]) - e[i]^2 ) )^(1/2)
+    DFFITS[i] <- t[i] * ( (H[i,i]) / (1 - H[i,i]) )^(1/2)
+  }
+  return(DFFITS)
+}
 
-# log and cox transform of the tl                  ???????????????????? need to try this
-df_merged <- df_merged %>% mutate(logTL = log(TL), rootTL = TL^(1/3))
-logTL_formula <- logTL ~ island_name +
+getDFBETAS <- function(model,df){
+  n <- nrow(df)
+  p <- length(model$coefficients)
+  X <- model.matrix(model)
+  original_formula <- eval(model$call[[2]])
+  
+  DFBETAS <- as.data.frame(matrix(0, nrow=n, ncol=p, byrow=T))
+  names(DFBETAS) <- names(model$coefficients)
+  rownames(DFBETAS) <- 1:n 
+  
+  for_c <- solve(t(X)%*%X)
+  for (i in 1:n){
+    diff_fit <- lm(original_formula, data = df[-c(i),])
+    MSE_diff <- mean(diff_fit$residuals^2)
+    
+    for (k in 1:p) {
+      b_k <- model$coefficients[[k]]
+      b_k_diff <- diff_fit$coefficients[[k]]
+      c_kk <- for_c[k,k]
+      DFBETAS[i,k] <- (b_k - b_k_diff) / sqrt(MSE_diff * c_kk)
+    }
+  }
+  return(DFBETAS)
+}
+###########################################################################################################
+# Accessing data
+df_sp <- read.csv("./data_clean/sparrow_data_Pepke_etal_EcolEvol2022clean.csv") %>%
+  dplyr::select("ID", "TL", "island_name", "pop_size_meancentered", "hatch_date")
+
+df_wt <- read.csv("./data_clean/weather_data_Pepke_etal_EcolEvol2022clean.csv") %>%
+  dplyr::select("date","temperature":"NAO")
+
+# Merge data.frames by hatch_date/date
+df_merged <- df_sp %>% merge(df_wt, by.x = "hatch_date", by.y = "date")
+#############################################################################################################
+# Full model
+tl_formula <- TL ~ island_name +
   pop_size_meancentered + temperature +
   precipitation + atm_pressure + NAO
-rootTL_formula <- logTL^(1/3) ~ island_name +
-  pop_size_meancentered + temperature +
-  precipitation + atm_pressure + NAO
-logTL_fit <- lm(logTL_formula, data = df_merged)
-rootTL_fit <- lm(rootTL_formula, data = df_merged)
+tl_fit <- lm(tl_formula, data = df_merged)
+
+# Diagnostics plots 
 par(mfrow = c(2,2))
-plot(logTL_fit) # fixed QQ plot :)
-plot(rootTL_fit)
+plot(tl_fit)                         # 1) QQ: heavy upper tail 
+plot_pvr('df_merged', 'tl_fit')      # 2) heteroskedastic: precipitation v. residuals
 
+dev.off()
+###############################################################################################################
+# Non-Normality and Heteroskedasticity: Log v. Root v. Box-Cox on Response
 
-# heteroskedasticity: look at nonzero precip subset
+# Box-Cox
+bc <- boxcox(tl_fit)
+lambda <- bc$x[which.max(bc$y)] # to choose value with maximum likelihood
+
+# Merge transformed response
+df_merged <- df_merged %>% mutate(logTL = log(TL), bc_TL = TL^lambda)
+
+# Compare QQ-plots and residuals
+responses <- c("TL","logTL", "bc_TL")
+
+pvr_pred <- c("precipitation") # for heteroskedasticity 
+
+par(mfrow = c(3,2))
+compare_qq_pvr(model, df, pvr_pred, cts_pred, cat_pred, responses){
+  for (response in responses) {
+    predictors <- paste("island_name", "pop_size_meancentered",
+                        "temperature", "precipitation", "atm_pressure", "NAO", sep = " + ")
+    formula_str <- paste(response, predictors, sep = " ~ ")
+    formula <- as.formula(formula_str)
+    model <- lm(formula, data = df_merged)
+    
+    plot(model, 2, main = response) # QQ plot
+    
+    plot_pvr(model, df_merged, cts_pred, cat_pred) # precip vs resid plot
+  }
+}
+
+plot_qq_pvr
+
+dev.off()
+###############################################################################################################
+# 0 precipitation seems to have a different behavior
+# Separate into 2 subsets based on precipitation 1) 0 and 2) non-0
 noprecip_subset <- df_merged[df_merged$precipitation==0,]
 precip_subset <- df_merged[df_merged$precipitation!=0,]
 
-noprecip_logTL_fit <- lm(logTL_formula, data = noprecip_subset)
-precip_logTL_fit <- lm(logTL_formula, data = precip_subset)
-
-summary(noprecip_logTL_fit)
-summary(precip_logTL_fit)
 
 par(mfrow = c(3,2))
-plot(as.factor(precip_subset$island_name), precip_logTL_fit$residuals)
-plot(precip_subset$pop_size_meancentered, precip_logTL_fit$residuals)
-plot(precip_subset$temperature,precip_logTL_fit$residuals)
-plot(precip_subset$precipitation,precip_logTL_fit$residuals) 
-plot(precip_subset$atm_pressure,precip_logTL_fit$residuals)
-plot(precip_subset$NAO,precip_logTL_fit$residuals)
-dev.off
+for (response in responses) {
+  predictors <- paste("island_name", "pop_size_meancentered",
+                      "temperature", "precipitation", "atm_pressure", "NAO", sep = " + ")
+  formula_str <- paste(response, predictors, sep = " ~ ")
+  formula <- as.formula(formula_str)
+  model <- lm(formula, data = df_merged)
+  
+  plot(model, 2, main = response) # QQ plot
+  
+  plot_pvr(model, df_merged, cts_pred, cat_pred) # precip vs resid plot
+}
 
+dev.off()
 
+###############################################################################################################
+# Possible outliers
+bc_formula <- TL^lambda ~ island_name +
+  pop_size_meancentered + temperature +
+  precipitation + atm_pressure + NAO
+best_model <- lm(bc_formula, df_merged)
+plot(best_model, 4) # Cook's distance
 
-# heteroskedasticity: attempt 2 - inverse weighting on Yi
-wt <- 1 / lm(abs(logTL_fit$residuals) ~ logTL_fit$fitted.values)$fitted.values^2
-wls_fit <- lm(logTL_formula, data = df_merged, weights=wt)
-summary(wls_fit)
+DFFITS_out <- getDFFITS(best_model, df_merged)
+sort(abs(DFFITS_out), decreasing = T)[1:50] # magnitude > 0.3 appear to be abnormal
+pos_extreme_DFFITS <- sort(DFFITS_out, decreasing = T)[1:5]
+neg_extreme_DFFITS <- sort(DFFITS_out, decreasing = F)[1:5]
+largestDFFITS <- c(pos_extreme_DFFITS[1:3], neg_extreme_DFFITS[1:2]) # magnitude > 0.3
 
+DFFITS_i <- match(largestDFFITS, DFFITS_out) # 685 1693 2020  612 1911
 
+df_merged[DFFITS_i, c("bc_TL", "island_name", "pop_size_meancentered", "temperature",
+                      "precipitation", "atm_pressure", "NAO")]
 
+DFBETAS_out <- getDFBETAS(best_model, df_merged)
+sort(abs(unlist(DFBETAS_out, use.names=FALSE)), decreasing = T)[1:50]
+pos_extreme_DFBETAS <- sort(unlist(DFBETAS_out, use.names=FALSE), decreasing = T)[1:5]
+neg_extreme_DFBETAS <- sort(unlist(DFBETAS_out, use.names=FALSE), decreasing = F)[1:5]
+largestDFBETAS <- c(pos_extreme_DFBETAS[1:3], neg_extreme_DFBETAS[1:2])
 
+indexed_DFBETAS <- data.frame(DFBETAS_out, removed_obs = 1:nrow(df_merged))
+indexed_DFBETAS %>%
+  filter(if_any(.cols = everything(),
+                .fns = ~ .x %in% largestDFBETAS)
+  )
+# 3 out of 4 of them are in the precipitation category
+####################################################################################################################
+# Heteroskedasticity: inverse weighting
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-# investigate QQ outliers 685, 2020, 1911
-df_merged[c(685,2020,1911),]
-head(sort(df_merged$TL,decreasing = T))
-head(sort(df_merged$TL,decreasing = F))
-# 685: shortest TL .14; ID 234
-# 2020: 2nd shortest TL .19; ID 230
-# 1911: 2nd longest TL 3.76; ID 1891
-
-# looking at the longest TL
-df_merged[df_merged$TL == '3.78',]
-logTL_fit$residuals[1818] # also had large residuals
-logTL_fit$residuals[c(685,2020,1911)]
-head(sort(logTL_fit$residuals, decreasing = T))
-head(sort(logTL_fit$residuals, decreasing = F))
-
-# check for other missing variables among these possible outliers
-'''use id'''
-
-
-
-
-
-# diagnostics
-par(mfrow = c(3,2))
-plot(as.factor(df_merged$island_name), logTL_fit$residuals)
-plot(df_merged$pop_size_meancentered,logTL_fit$residuals)
-plot(df_merged$temperature,logTL_fit$residuals)
-plot(df_merged$precipitation,logTL_fit$residuals) # still slightly heteroskedastic
-plot(df_merged$atm_pressure,logTL_fit$residuals)
-plot(df_merged$NAO,logTL_fit$residuals)
-
-# Model selection: vif and lasso
-'''do this next'''
