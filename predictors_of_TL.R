@@ -1,23 +1,17 @@
-"""
+"
 Summary: 
 
 A. Model assumptions
   1) Full model finds nonlinearity (QQ) and nonconstant residuals (vs. ‘precipitation’)
   2) Box-cox transform on Yi produces best diagnostic plots (QQ/resid)
-  3) Bin precipitation (none, low, medium, high) to drop assumption of precipitation predictor v. resid
+  3) Bin precipitation (none, low, medium, high) to drop constant variance assumption of precipitation predictor v. resid
      - check changes in box-cox, QQ, and resid plots
      - Fixed: all continuous resid plots good
   4) remove outliers (DFFITS, DFBETAS, and Cook's leverage)         
-     - check changes in box-cox, QQ, and resid plots
+     - check changes in box-cox (new lambda), QQ, and resid plots
      - fixed: QQ plot looks normal now
 
-B. Significant predictors
-  5) multicollinearity?
-  6) family-wise inference
-  7) Ridge to determine
-  8) independent residuals: see if we need to add time predictor (date or day_of_the_year or obs no.) or add back any predictors
-
-"""
+"
 
 ############################################################################################################
 # Libraries
@@ -286,4 +280,4 @@ df_merged_noout <- df_merged_noout %>% mutate(bc_TL = TL^lambda_noout)
 pvr_pred_noout <- pvr_pred2
 compare_qq_pvr(responses = responses, model_pred = binnedmodel_pred, 
                pvr_predictors = pvr_pred_noout, data = df_merged_noout)
-
+#############################################################################################################################
