@@ -1,5 +1,5 @@
 "
-Summary: 
+Summary: Wrangling data so that LINE assumptions are met
 
 A. Model assumptions
   1) Full model finds nonlinearity (QQ) and nonconstant residuals (vs. ‘precipitation’)
@@ -10,7 +10,7 @@ A. Model assumptions
   4) remove outliers (DFFITS, DFBETAS, and Cook's leverage)         
      - check changes in box-cox (new lambda), QQ, and resid plots
      - fixed: QQ plot looks normal now
-
+     - write into csv 'predictors_of_tl_dataset.csv'
 "
 
 ############################################################################################################
@@ -19,7 +19,7 @@ library(dplyr)
 library(MASS)
 
 # Functions
-plot_multi_pvr <- function(model, data, pvr_predictors, change_layout = T) {     # plotting predictors v. residuals
+plot_multi_pvr <- function(model, data, pvr_predictors, change_layout = T) {     # plotting predictors v. residuals (pvr)
   if (change_layout == T){
     par(mfrow = c(2, ceiling( length(pvr_predictors ) / 2 ) ) )
   }
@@ -31,8 +31,7 @@ plot_multi_pvr <- function(model, data, pvr_predictors, change_layout = T) {    
   }
 }
 
-compare_qq_pvr <- function(responses, model_pred, pvr_predictors, data){ 
-  # comparing qq and pvr for different response transformations
+compare_qq_pvr <- function(responses, model_pred, pvr_predictors, data){  # compare qq and pvr between Yi transformations
   par( mfrow = c( length(responses) , length(pvr_predictors) + 1 ) )
   
   for (response in responses) {
@@ -43,7 +42,7 @@ compare_qq_pvr <- function(responses, model_pred, pvr_predictors, data){
     
     plot(model, 2, main = response) # QQ plot
     
-    plot_multi_pvr(model, data, pvr_predictors, change_layout = F) # precip vs resid plot
+    plot_multi_pvr(model, data, pvr_predictors, change_layout = F)
   }
 }
 
@@ -90,7 +89,7 @@ getDFBETAS <- function(model, data){
   }
   return(DFBETAS)
 }
-percentile_conversion <- function(vector) {           # converts a single vector into a vector with percentile values
+percentile_conversion <- function(vector) {           # converts a vector of numerical values into percentiles
   percentile <- ecdf(vector)
   n <- length(vector)
   
@@ -185,7 +184,7 @@ tl_binnedfit <- lm(tl_binned_formula, data = df_merged)
 bc2 <- boxcox(tl_binnedfit)
 lambda_binned <- bc2$x[which.max(bc2$y)] # to choose value with maximum likelihood
 c(lambda, lambda_binned) 
-# check: same bc
+# check: same bc lambda
 
 pvr_pred2 <- c("pop_size_meancentered", "temperature", "atm_pressure", "NAO")
 compare_qq_pvr(responses = responses, model_pred = binnedmodel_pred, 
@@ -194,7 +193,7 @@ compare_qq_pvr(responses = responses, model_pred = binnedmodel_pred,
 
 dev.off()
 ####################################################################################################################
-# Outliers - using bc model with binned precipitation
+# Possible Outliers - using bc model with binned precipitation
 bin_bcformula <- as.formula(
   paste("TL^lambda",
         paste(binnedmodel_pred, collapse = " + "),
@@ -255,15 +254,14 @@ colnames(percentile_df) <- quant_variables
 converted_df <- data.frame(percentile_df, island_name = df_merged$island_name, obs_no = 1:nrow(df_merged))
 converted_df[possible_outliers,]
 
-# Strange behavior: values > 99th percentile and < 1st percentile
+# Outlying behavior:  > 99th percentile and < 1st percentile
 outliers_df <- converted_df[possible_outliers,] %>%
   filter(if_any(.cols = !(c(island_name, obs_no)),
                 .fns = ~ .x > .99 | .x < .01)
-  )                   # only two do not qualify
+  )                   
+nrow(outliers_df)/2032 # Remove 1.77 % of data
 
-outliers <- outliers_df$obs_no
-length(outliers)/2032 # 1.8 % of data removed
-
+outliers <- outliers_df[['obs_no']]
 df_merged_noout <- df_merged[-outliers,]
 ############################################################################################################################
 # check that box-cox and diagnostics are same
@@ -271,7 +269,7 @@ tl_binnedfit_noout <- lm(tl_binned_formula, data = df_merged_noout)
 bc3 <- boxcox(tl_binnedfit_noout)
 lambda_noout <- bc3$x[which.max(bc3$y)] # to choose value with maximum likelihood
 c(lambda, lambda_binned, lambda_noout) 
-# check: need to retransform data with new lambda
+# check: different bc
 
 # retransform box-cox
 df_merged_noout <- df_merged_noout %>% mutate(bc_TL = TL^lambda_noout)
@@ -281,3 +279,6 @@ pvr_pred_noout <- pvr_pred2
 compare_qq_pvr(responses = responses, model_pred = binnedmodel_pred, 
                pvr_predictors = pvr_pred_noout, data = df_merged_noout)
 #############################################################################################################################
+# Write csv file
+file_out <- "./data_clean/predictors_of_tl_dataset.csv"
+write.csv(x = df_merged_noout, file = file_out)
