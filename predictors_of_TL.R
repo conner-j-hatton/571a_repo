@@ -4,16 +4,18 @@ Summary: Wrangling data so that LINE assumptions are met
 A. Model assumptions
   1) Full model finds nonlinearity (QQ) and nonconstant residuals (vs. ‘precipitation’)
   2) Box-cox transform on Yi produces best diagnostic plots (QQ/resid)
-  3) Bin precipitation (none, low, medium, high) to drop constant variance assumption of precipitation predictor v. resid
+  3) Bin precipitation (none, low, high) to drop constant variance assumption of precipitation predictor v. resid
      - check changes in box-cox, QQ, and resid plots
      - Fixed: all continuous resid plots good
   4) remove outliers (DFFITS, DFBETAS, and Cook's leverage)         
      - check changes in box-cox (new lambda), QQ, and resid plots
+        - still better than log transform
      - fixed: QQ plot looks normal now
-     - write into csv 'predictors_of_tl_dataset.csv'
+     - write into csv: 'predictors_of_tl_dataset.csv'
 "
 
 ############################################################################################################
+rm(list = ls())
 # Libraries
 library(dplyr)
 library(MASS)
@@ -104,14 +106,15 @@ percentile_conversion <- function(vector) {           # converts a vector of num
 ###########################################################################################################
 # Accessing data
 df_sp <- read.csv("./data_clean/sparrow_data_Pepke_etal_EcolEvol2022clean.csv") %>%
-  dplyr::select("ID", "TL", "island_name", "pop_size_meancentered", "hatch_date")
+  dplyr::select("ID", "TL", "island_name", "pop_size_meancentered", "hatch_date", "date") # IMPORTANT: this "date" represents telomere sampling date
+names(df_sp)[6] <- "sample_date" # rename "date" to "sample_date"
 
 df_wt <- read.csv("./data_clean/weather_data_Pepke_etal_EcolEvol2022clean.csv") %>%
-  dplyr::select("date","temperature":"NAO")
+  dplyr::select("date", "year", "yearday","temperature":"NAO")
 
-# Merge data.frames by date
-df_merged <- df_sp %>% merge(df_wt, by.x = "hatch_date", by.y = "date")
-tl_predictors <- names(df_merged)[-c(1:3)]
+# Merge data.frames by hatch_date
+df_merged <- df_sp %>% merge(df_wt, by.x = "hatch_date", by.y = "date")   # since we are investigating early life predictors
+tl_predictors <- names(df_merged)[-c(1:3, 6:8)]
 #############################################################################################################
 # Full model
 full_pred <- c("island_name",
@@ -158,14 +161,12 @@ dev.off()
 
 # Binning to drop model's assumption that precipitation v. residuals are normally distr.
 precip_subset <- df_merged[df_merged$precipitation!=0,]
-quantiles <- quantile(precip_subset$precipitation, probs = c(0.33, 0.66))
-
+med <- median(df_merged$precipitation)
 df_merged <- df_merged %>% 
   mutate(level_of_precipitation = 
            case_when(precipitation == 0 ~ "none",
-                     precipitation <= quantiles[1] ~ "low",
-                     precipitation < quantiles[2] ~ "moderate",
-                     precipitation >= quantiles[2] ~ "high"
+                     precipitation < med ~ "low",
+                     precipitation >= med ~ "high"
            )
   )
 # check if box-cox is the same?
@@ -207,27 +208,24 @@ plot(bin_bcmodel, 4)
 largestCooks <- sort(cooks.distance(bin_bcmodel), decreasing = T)[1:20] # top 20 values: < 1% of data
 cooks_i <- as.integer(names(largestCooks))
 cooks_i          
-# 2020  685 1818  935 1632 1536 1581 1911 2290 1884 1693  165  
-# 180 2019 1104 1533  877 1532  181 1184
+# 685 2020 1911 1632  935 1818  877  180 1581 2290 2051  227  418 1522  815  181 1693 1884  724 1536
 
 # DFFITS
 DFFITS_out <- getDFFITS(bin_bcmodel, df_merged)
 sort(abs(DFFITS_out), decreasing = T)[1:100] # magnitude > 0.2 appears abnormal
-pos_extreme_DFFITS <- sort(DFFITS_out, decreasing = T)[1:20]
-neg_extreme_DFFITS <- sort(DFFITS_out, decreasing = F)[1:40]
+pos_extreme_DFFITS <- sort(DFFITS_out, decreasing = T)[1:9]
+neg_extreme_DFFITS <- sort(DFFITS_out, decreasing = F)[1:13]
 largestDFFITS <- c(pos_extreme_DFFITS, neg_extreme_DFFITS) # magnitude > 0.2
 
 DFFITS_i <- match(largestDFFITS, DFFITS_out)
 DFFITS_i
-# 2020  685  935 1581 1693  165 1184 1292  982  227 2004  695 1522 1178 2077 1769  724   83
-# 1094 1200 1818 1632 1536 1911 2290 1884  180 2019 1104 1533  877 1532  181 1107 1773 2289
-# 971 1580 2190  332 2051  733 1801  418  737 1535 2192 2273  815 2274 1069 2288 1606 1804
-# 221  736  508  999 1344  3
+# 685 2020  935 1581  227 1522 1693  724 1094 1911 1632 1818  877  180 2290 2051  418  815  181 1884 1536
+# 999
 
 DFBETAS_out <- getDFBETAS(bin_bcmodel, df_merged) 
 sort(abs(unlist(DFBETAS_out, use.names=FALSE)), decreasing = T)[1:100] # magnitude > .2 appear to be abnormal
-pos_extreme_DFBETAS <- sort(unlist(DFBETAS_out, use.names=FALSE), decreasing = T)[1:12]
-neg_extreme_DFBETAS <- sort(unlist(DFBETAS_out, use.names=FALSE), decreasing = F)[1:14]
+pos_extreme_DFBETAS <- sort(unlist(DFBETAS_out, use.names=FALSE), decreasing = T)[1:4]
+neg_extreme_DFBETAS <- sort(unlist(DFBETAS_out, use.names=FALSE), decreasing = F)[1:5]
 largestDFBETAS <- c(pos_extreme_DFBETAS, neg_extreme_DFBETAS)
 
 DFBETAS_i_df <- data.frame(DFBETAS_out, removed_obs = 1:nrow(df_merged))
@@ -237,7 +235,7 @@ largestDFBETAS_df <- DFBETAS_i_df %>%
   )
 DFBETAS_i <- largestDFBETAS_df$removed_obs
 DFBETAS_i 
-# DFBETAS: 165  685  935 1104 1292 1536 1581 1632 1693 1818 1884 2019 2020 2273 2274
+# DFBETAS: 685 1632 1818 2020
 ############################################################################################################################
 # Removing outliers
 possible_outliers <- unique(c(cooks_i, DFFITS_i, DFBETAS_i))
@@ -259,7 +257,7 @@ outliers_df <- converted_df[possible_outliers,] %>%
   filter(if_any(.cols = !(c(island_name, obs_no)),
                 .fns = ~ .x > .99 | .x < .01)
   )                   
-nrow(outliers_df)/2032 # Remove 1.77 % of data
+nrow(outliers_df)/2032 # Remove 1% of data
 
 outliers <- outliers_df[['obs_no']]
 df_merged_noout <- df_merged[-outliers,]
@@ -282,3 +280,4 @@ compare_qq_pvr(responses = responses, model_pred = binnedmodel_pred,
 # Write csv file
 file_out <- "./data_clean/predictors_of_tl_dataset.csv"
 write.csv(x = df_merged_noout, file = file_out)
+
