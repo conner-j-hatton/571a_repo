@@ -32,7 +32,8 @@ plot_multi_pvr <- function(model, data, pvr_predictors,    # plotting predictors
                            data_name = deparse(substitute(data))) {        # for jpeg naming
   if (change_layout == T){
     # jpeg part
-    jpegtitle <- paste(getVarName(model, model_name), getVarName(data, data_name), "pvr_plot.jpg", sep = '_')
+    path = "./plots/"
+    jpegtitle <- paste(path, getVarName(model, model_name), getVarName(data, data_name), "pvr_plot.jpg", sep = '_')
     jpeg(jpegtitle)
     print(jpegtitle) # sanity check
     
@@ -49,6 +50,7 @@ plot_multi_pvr <- function(model, data, pvr_predictors,    # plotting predictors
 
 compare_qq_pvr <- function(responses, model_pred, pvr_predictors, data, name){  # compare qq and pvr between Yi transformations
   # jpeg part
+  path = './plots/'
   jpegtitle <- paste("Yi_transforms_plot_", name, ".jpg", sep = "")
   jpeg(jpegtitle)
   print(jpegtitle) # sanity check
