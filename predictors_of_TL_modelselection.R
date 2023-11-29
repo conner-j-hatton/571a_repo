@@ -60,6 +60,7 @@ nointer_formula <- as.formula(
         sep = " ~ ")
 )
 X_nointer <- model.matrix(lm(nointer_formula, data = tl_df), data = tl_df)[, -1]
+
 jpeg("./plots/no_interactions_model_corrplot.jpg")
 corrplot(cor(X_nointer), type = "lower", tl.cex = 0.65)
 # looks much better
@@ -68,6 +69,11 @@ dev.off()
 # LASSO Regularization on full model
 X <- model.matrix(full_formula, data = tl_df)
 cvfit <- cv.glmnet(x = X, y = tl_df$bc_TL, alpha = 1)
+
+jpeg("LASSO_on_fullmodel_cvresults.jpg")
+plot(cvfit)
+dev.off()
+
 print(cvfit)
 coef(glmnet(X, tl_df$bc_TL), s = 0.001070)
 # level_of_precipitation*atm_pressure, pop_size_meancentered, temperature, NAO
