@@ -15,14 +15,27 @@ A. Model assumptions
 "
 
 ############################################################################################################
+dev.off()
 rm(list = ls())
 # Libraries
 library(dplyr)
 library(MASS)
 
 # Functions
-plot_multi_pvr <- function(model, data, pvr_predictors, change_layout = T) {     # plotting predictors v. residuals (pvr)
+getVarName <- function(object, name = deparse(substitute(object))) {
+  return(name)
+}
+
+plot_multi_pvr <- function(model, data, pvr_predictors,    # plotting predictors v. residuals (pvr) 
+                           change_layout = T,                                # optional arg
+                           model_name = deparse(substitute(model)),       # for jpeg naming
+                           data_name = deparse(substitute(data))) {        # for jpeg naming
   if (change_layout == T){
+    # jpeg part
+    jpegtitle <- paste(getVarName(model, model_name), getVarName(data, data_name), "pvr_plot.jpg", sep = '_')
+    jpeg(jpegtitle)
+    print(jpegtitle) # sanity check
+    
     par(mfrow = c(2, ceiling( length(pvr_predictors ) / 2 ) ) )
   }
   
@@ -31,21 +44,27 @@ plot_multi_pvr <- function(model, data, pvr_predictors, change_layout = T) {    
     predictor <- data[[pred]]
     plot(predictor, resid, xlab = pred)
   }
+  if (change_layout == T){dev.off()}
 }
 
-compare_qq_pvr <- function(responses, model_pred, pvr_predictors, data){  # compare qq and pvr between Yi transformations
-  par( mfrow = c( length(responses) , length(pvr_predictors) + 1 ) )
+compare_qq_pvr <- function(responses, model_pred, pvr_predictors, data, name){  # compare qq and pvr between Yi transformations
+  # jpeg part
+  jpegtitle <- paste("Yi_transforms_plot_", name, ".jpg", sep = "")
+  jpeg(jpegtitle)
+  print(jpegtitle) # sanity check
   
+  par( mfrow = c( length(responses) , length(pvr_predictors) + 1 ) )
   for (response in responses) {
     predictors <- paste(model_pred, collapse = " + ")
     formula_str <- paste(response, predictors, sep = " ~ ")
     formula <- as.formula(formula_str)
     model <- lm(formula, data = data)
-    
+
     plot(model, 2, main = response) # QQ plot
-    
+
     plot_multi_pvr(model, data, pvr_predictors, change_layout = F)
   }
+  dev.off()
 }
 
 getDFFITS <- function(model, data){
@@ -134,16 +153,18 @@ tl_fit <- lm(tl_formula, data = df_merged)
 # Diagnostics plots 
 par(mfrow = c(2,2))
 plot(tl_fit)                         # 1) QQ: heavy upper tail 
+dev.off()
+
 pvr_pred <- tl_predictors[-1]
 plot_multi_pvr(model = tl_fit, data = df_merged, pvr_pred = pvr_pred)      # 2) heteroskedastic: precipitation v. residuals
 
-dev.off()
 ###############################################################################################################
 # Non-Normality and Heteroskedasticity: Log v. Root v. Box-Cox on Response
 
 # Box-Cox
 bc <- boxcox(tl_fit)
 lambda <- bc$x[which.max(bc$y)] # to choose value with maximum likelihood
+dev.off()
 
 # Merge transformed responses
 df_merged <- df_merged %>% mutate(logTL = log(TL), bc_TL = TL^lambda)
@@ -152,10 +173,8 @@ df_merged <- df_merged %>% mutate(logTL = log(TL), bc_TL = TL^lambda)
 responses <- c("TL","logTL", "bc_TL")
 comparepvr_pred <- c("precipitation") # for heteroskedasticity 
 compare_qq_pvr(responses = responses, model_pred = full_pred, 
-               pvr_predictors = comparepvr_pred, data = df_merged)   
+               pvr_predictors = comparepvr_pred, data = df_merged, name = 'raw')   
 # box-cox is best
-
-dev.off()
 ###############################################################################################################
 # Refactoring Precipitation
 
@@ -186,13 +205,12 @@ bc2 <- boxcox(tl_binnedfit)
 lambda_binned <- bc2$x[which.max(bc2$y)] # to choose value with maximum likelihood
 c(lambda, lambda_binned) 
 # check: same bc lambda
+dev.off()
 
 pvr_pred2 <- c("pop_size_meancentered", "temperature", "atm_pressure", "NAO")
 compare_qq_pvr(responses = responses, model_pred = binnedmodel_pred, 
-               pvr_predictors = pvr_pred2, data = df_merged)
+               pvr_predictors = pvr_pred2, data = df_merged, name = 'binned')
 # check: similar diagnostics as earlier
-
-dev.off()
 ####################################################################################################################
 # Possible Outliers - using bc model with binned precipitation
 bin_bcformula <- as.formula(
@@ -203,6 +221,7 @@ bin_bcformula <- as.formula(
 bin_bcmodel <- lm(bin_bcformula, data = df_merged)
 
 plot(bin_bcmodel, 4)
+
 
 # Cook's
 largestCooks <- sort(cooks.distance(bin_bcmodel), decreasing = T)[1:20] # top 20 values: < 1% of data
@@ -268,6 +287,7 @@ bc3 <- boxcox(tl_binnedfit_noout)
 lambda_noout <- bc3$x[which.max(bc3$y)] # to choose value with maximum likelihood
 c(lambda, lambda_binned, lambda_noout) 
 # check: different bc
+dev.off()
 
 # retransform box-cox
 df_merged_noout <- df_merged_noout %>% mutate(bc_TL = TL^lambda_noout)
@@ -275,7 +295,7 @@ df_merged_noout <- df_merged_noout %>% mutate(bc_TL = TL^lambda_noout)
 # check: QQ is normal and residuals are constant-looking
 pvr_pred_noout <- pvr_pred2
 compare_qq_pvr(responses = responses, model_pred = binnedmodel_pred, 
-               pvr_predictors = pvr_pred_noout, data = df_merged_noout)
+               pvr_predictors = pvr_pred_noout, data = df_merged_noout, name = "no_outliers_binned")
 #############################################################################################################################
 # Write csv file
 file_out <- "./data_clean/predictors_of_tl_dataset.csv"
