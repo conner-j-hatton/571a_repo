@@ -43,8 +43,10 @@ full_formula <- as.formula(
         sep = " ~ ")
 )
 X <- model.matrix(lm(full_formula, data = tl_df), data = tl_df)[, -1]
+jpeg("./plots/full_model_corrplot.jpg")
 corrplot(cor(X), type = "lower", tl.cex = 0.65)
 # High multicollinearity among precipitation variables. Regularize with LASSO later.
+dev.off()
 
 # minus interactions
 pred_nointer <- c("island_name",
@@ -58,8 +60,10 @@ nointer_formula <- as.formula(
         sep = " ~ ")
 )
 X_nointer <- model.matrix(lm(nointer_formula, data = tl_df), data = tl_df)[, -1]
+jpeg("./plots/no_interactions_model_corrplot.jpg")
 corrplot(cor(X_nointer), type = "lower", tl.cex = 0.65)
 # looks much better
+dev.off()
 ####################################################################################################################
 # LASSO Regularization on full model
 X <- model.matrix(full_formula, data = tl_df)
@@ -86,11 +90,14 @@ anova(lasso_model, reduced_model)
 best_model <- reduced_model
 ####################################################################################################################
 # Diagnostics
+jpeg('./plots/best_model_diagnostics_main.jpg')
 par(mfrow = c(2,2))
 plot(best_model, which = c(1, 2, 4))
 plot(x = tl_df$temperature, y = best_model$residuals)
+dev.off()
 
 # Independence of residuals
+jpeg('./plots/best_model_indep_resid.jpg')
 par(mfrow = c(3,3))
 # v. hatching time
 plot(y = best_model$residuals, x = tl_df$year)
@@ -116,6 +123,8 @@ for (pred in cts_omitted_pred) {
 for (pred in cat_omitted_pred) {
   plot(as.factor(tl_df[[pred]]), best_model$residuals, main = pred)
 }
+
+dev.off()
 ###################################################################################################################
 coeffs <- best_model$coefficients
 lambda <- -0.7474747 # from earlier
