@@ -77,7 +77,7 @@ bonferroni_a <- 0.05/6
 bonferroni_a
 # 0.008333333
 summary(nointer_model)
-# temperature is the only significant predictor
+# temperature is the only significant predictor p-val = 7.45e-05
 reduced_model <- lm(bc_TL ~ temperature, data = tl_df)
 ####################################################################################################################
 # ANOVA comparison
@@ -88,30 +88,36 @@ best_model <- reduced_model
 # Diagnostics
 par(mfrow = c(2,2))
 plot(best_model, which = c(1, 2, 4))
-plot(tl_df$temperature, best_model$residuals)
+plot(x = tl_df$temperature, y = best_model$residuals)
 
 # Independence of residuals
-par(mfrow = c())
+par(mfrow = c(3,3))
 # v. hatching time
-plot(best_model$residuals, tl_df$year)
-plot(best_model$residuals, tl_df$yearday)
+plot(y = best_model$residuals, x = tl_df$year)
+plot(y = best_model$residuals, x = tl_df$yearday)
 # v. telomere collection time
+tl_df <- tl_df %>% mutate(sample_year = as.integer(substr(sample_date, 7, 10))) %>%
+  mutate(sample_month = as.integer(substr(sample_date, 4, 5)))
 
-# v. ID
+plot(y=best_model$residuals, x=tl_df$sample_year)
+plot(y=best_model$residuals, x=tl_df$sample_month)
 
 # v. ommitted predictors
-omitted_pred <- c("island_name",
-                  "pop_size_meancentered",
-                  "level_of_precipitation",
+cts_omitted_pred <- c("pop_size_meancentered",
                   "atm_pressure", 
                   "NAO"
 )
+cat_omitted_pred <- c("island_name", "level_of_precipitation")
 
-for (pred in omitted_pred) {
-  continuoustypeof(tl_df[[pred]])
-  if (
+for (pred in cts_omitted_pred) {
   plot(tl_df[[pred]], best_model$residuals, main = pred)
-  }
-plot(best_model$residuals, tl_df$year)
-independence of residuals (plot against day_of_the_month, year, observation no, other 5 ommitted var)
-head(tl_df)
+}
+
+for (pred in cat_omitted_pred) {
+  plot(as.factor(tl_df[[pred]]), best_model$residuals, main = pred)
+}
+###################################################################################################################
+coeffs <- best_model$coefficients
+lambda <- -0.7474747 # from earlier
+transformed_coeffs <- (coeffs)^(1/lambda)
+transformed_coeffs
