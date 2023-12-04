@@ -24,6 +24,7 @@ rm(list = ls())
 # Libraries
 library(corrplot)
 library(glmnet)
+library(ggplot2)
 
 # Functions
 #############################################################################################################
@@ -43,7 +44,6 @@ full_formula <- as.formula(
         sep = " ~ ")
 )
 X <- model.matrix(lm(full_formula, data = tl_df), data = tl_df)[, -1]
-jpeg("./plots/full_model_corrplot.jpg")
 corrplot(cor(X), type = "lower", tl.cex = 0.65)
 # High multicollinearity among precipitation variables. Regularize with LASSO later.
 dev.off()
@@ -61,8 +61,7 @@ nointer_formula <- as.formula(
 )
 X_nointer <- model.matrix(lm(nointer_formula, data = tl_df), data = tl_df)[, -1]
 
-jpeg("./plots/no_interactions_model_corrplot.jpg")
-corrplot(cor(X_nointer), type = "lower", tl.cex = 0.65)
+corrplot(cor(X_nointer), type = "lower", tl.cex = 0.8)
 # looks much better
 dev.off()
 ####################################################################################################################
@@ -70,7 +69,6 @@ dev.off()
 X <- model.matrix(full_formula, data = tl_df)
 cvfit <- cv.glmnet(x = X, y = tl_df$bc_TL, alpha = 1)
 
-jpeg("LASSO_on_fullmodel_cvresults.jpg")
 plot(cvfit)
 dev.off()
 
@@ -96,24 +94,22 @@ anova(lasso_model, reduced_model)
 best_model <- reduced_model
 ####################################################################################################################
 # Diagnostics
-jpeg('./plots/best_model_diagnostics_main.jpg')
 par(mfrow = c(2,2))
 plot(best_model, which = c(1, 2, 4))
-plot(x = tl_df$temperature, y = best_model$residuals)
+plot(x = tl_df$temperature, y = best_model$residuals, main = "Residuals v. Temperature", xlab = "Temperature")
 dev.off()
 
 # Independence of residuals
-jpeg('./plots/best_model_indep_resid.jpg')
 par(mfrow = c(3,3))
 # v. hatching time
-plot(y = best_model$residuals, x = tl_df$year)
-plot(y = best_model$residuals, x = tl_df$yearday)
+plot(y = best_model$residuals, x = tl_df$year, main="hatch year", xlab = "hatch year", ylab="residuals")
+plot(y = best_model$residuals, x = tl_df$yearday, main="hatch day of year", xlab = "hatch day of year (1-365)", ylab="residuals")
 # v. telomere collection time
 tl_df <- tl_df %>% mutate(sample_year = as.integer(substr(sample_date, 7, 10))) %>%
   mutate(sample_month = as.integer(substr(sample_date, 4, 5)))
 
-plot(y=best_model$residuals, x=tl_df$sample_year)
-plot(y=best_model$residuals, x=tl_df$sample_month)
+plot(y=best_model$residuals, x=tl_df$sample_year, main = "telomere collection year",xlab="year", ylab = "residuals")
+plot(y=best_model$residuals, x=tl_df$sample_month, main = "telomere collection month", xlab="month",ylab="residuals")
 
 # v. ommitted predictors
 cts_omitted_pred <- c("pop_size_meancentered",
@@ -123,7 +119,7 @@ cts_omitted_pred <- c("pop_size_meancentered",
 cat_omitted_pred <- c("island_name", "level_of_precipitation")
 
 for (pred in cts_omitted_pred) {
-  plot(tl_df[[pred]], best_model$residuals, main = pred)
+  plot(tl_df[[pred]], best_model$residuals, main = pred, xlab = pred)
 }
 
 for (pred in cat_omitted_pred) {
@@ -132,7 +128,26 @@ for (pred in cat_omitted_pred) {
 
 dev.off()
 ###################################################################################################################
-coeffs <- best_model$coefficients
-lambda <- -0.7474747 # from earlier
-transformed_coeffs <- (coeffs)^(1/lambda)
-transformed_coeffs
+# plotting best model (box-cox transformed)
+predictions <- data.frame(temperature = 270:300, bc_TL = predict(best_model, newdata = data.frame(temperature = 270:300)))
+
+ggplot() +
+  geom_point(aes(x=temperature, y = bc_TL, color = "blue"), data = tl_df) +
+  geom_line(aes(x=temperature, y = bc_TL, col = "darkblue"), data = predictions) +
+  ggtitle("Temperature v. Transformed Telomere Length") +
+  scale_x_continuous("Temperature (K)") +
+  scale_y_continuous("TL^(3/4)") 
+###################################################################################################################
+# plot out  back-transformed predictions
+lambda <- .75
+predictions <- predictions %>% 
+  mutate(TL = (bc_TL)^(1/lambda))
+ggplot() +
+  geom_point(aes(x=temperature, y = TL, color = "blue"), data = tl_df) +
+  geom_line(aes(x=temperature, y = TL, col = "darkblue"), data = predictions) +
+  ggtitle("Temperature v. Telomere Length") +
+  scale_x_continuous("Temperature (K)") +
+  scale_y_continuous("TL") 
+
+est <- lm(TL ~ temperature, data = predictions)
+summary(est)
