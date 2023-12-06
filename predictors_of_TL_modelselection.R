@@ -7,7 +7,8 @@ B. Significant predictors
           - lambda 1se predictors: level_of_precipitation*atm_pressure, pop_size_meancentered, temperature, NAO
       B. No-interaction model: family-wise inference
           - significant predictor(s): temperature only
-      C. ANOVA to compare LASSO model and no-interaction model
+      C. Stepwise forward model
+      D. ANOVA to compare LASSO model and no-interaction model
           - p-value = 0.10 => temperature is the only significant predictor
   6) Diagnostic plots
       - QQ plot
@@ -16,6 +17,7 @@ B. Significant predictors
       - Cook's
       - independence of residuals (plot against date, observation no, other 5 ommitted var)
   7) re-transform back into original units
+  8) also try a forward step wise model
       
 "
 #############################################################################################################
@@ -25,6 +27,8 @@ rm(list = ls())
 library(corrplot)
 library(glmnet)
 library(ggplot2)
+library(dplyr)
+library(leaps)
 
 # Functions
 #############################################################################################################
@@ -87,9 +91,14 @@ bonferroni_a
 summary(nointer_model)
 # temperature is the only significant predictor p-val = 7.45e-05
 reduced_model <- lm(bc_TL ~ temperature, data = tl_df)
+
+# stepwise forward model (matches reduced model)
+stepwise_fw <- step(lm(bc_TL ~ 1, data = tl_df), k = log(nrow(tl_df)),
+                    scope = full_formula, direction = "forward")
+sort(names(stepwise_fw$coefficients))
 ####################################################################################################################
 # ANOVA comparison
-anova(lasso_model, reduced_model)
+anova(lasso_model, reduced_model) 
 # Does not appear to be significantly better
 best_model <- reduced_model
 ####################################################################################################################
@@ -151,3 +160,4 @@ ggplot() +
 
 est <- lm(TL ~ temperature, data = predictions)
 summary(est)
+

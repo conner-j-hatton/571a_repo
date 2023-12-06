@@ -4,9 +4,8 @@ Summary: Wrangling data so that LINE assumptions are met
 A. Model assumptions
   1) Full model finds nonlinearity (QQ) and nonconstant residuals (vs. ‘precipitation’)
   2) Box-cox transform on Yi produces best diagnostic plots (QQ/resid)
-  3) Bin precipitation (none, low, high) to drop constant variance assumption of precipitation predictor v. resid
+  3) Bin precipitation (none, low, high) to help with constant variance assumption of precipitation predictor v. resid
      - check changes in box-cox, QQ, and resid plots
-     - Fixed: all continuous resid plots good
   4) remove outliers (DFFITS, DFBETAS, and Cook's leverage)         
      - check changes in box-cox (new lambda), QQ, and resid plots
         - still better than log transform
